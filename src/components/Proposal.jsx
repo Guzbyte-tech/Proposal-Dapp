@@ -5,17 +5,21 @@ import useContract from "../hooks/useContract";
 import { useAppKitAccount } from "@reown/appkit/react";
 import { useState } from "react";
 
-const Proposal = (
-  { proposalId, description, amount, minRequiredVote, votecount, deadline, executed, updateVoteCount }
-  
-) => {
+const Proposal = ({
+  proposalId,
+  description,
+  amount,
+  minRequiredVote,
+  votecount,
+  deadline,
+  executed,
+}) => {
   const { address } = useAppKitAccount();
   const contract = useContract(true); // Assuming this gets a contract instance
   const [loading, setLoading] = useState(false);
+  const [executing, setExecuting] = useState(false); // New state for executing
 
-
-
-  const handleVoting = async () => {
+  const handleUserVoting = async () => {
     if (!address) {
       toast.error("Please connect your wallet to vote.");
       return;
@@ -31,14 +35,12 @@ const Proposal = (
       const tx = await contract.vote(proposalId);
       await tx.wait();
 
-      
-      const updatedProposal = await contract.proposals(proposalId);
-      const newVoteCount = Number(updatedProposal.voteCount);
+      // const updatedProposal = await contract.proposals(proposalId);
+      // const newVoteCount = Number(updatedProposal.voteCount);
 
-      updateVoteCount(proposalId, newVoteCount);
+      // updateVoteCount(proposalId, newVoteCount);
 
       toast.success("Vote submitted successfully!");
-
     } catch (error) {
       console.error("Error voting on the proposal:", error);
       toast.error("Failed to vote.");
@@ -46,6 +48,32 @@ const Proposal = (
       setLoading(false);
     }
   };
+
+  const handleExecute = async () => {
+    if (!address) {
+      toast.error("Please connect your wallet to execute.");
+      return;
+    }
+
+    try {
+      setExecuting(true);
+      const tx = await contract.executeProposal(proposalId);
+      await tx.wait();
+      const reciept = await tx.wait();
+      if (reciept.status === 1) {
+        toast.success("Proposal Executed successfully");
+        return;
+      }
+    } catch (error) {
+      console.error("Error executing the proposal:", error);
+      toast.error("Failed to execute proposal.");
+    } finally {
+      setExecuting(false); // Reset executing state
+    }
+  };
+
+  const isExpired = new Date(Number(deadline) * 1000) < new Date();
+  const canExecute = !executed && Number(votecount) >= Number(minRequiredVote);
 
   return (
     <Box className="bg-slate-400 rounded-md shadow-sm p-4 w-96">
@@ -79,10 +107,24 @@ const Proposal = (
         </Flex>
       </Box>
       <Button
-        onClick={handleVoting}
-        className="bg-blue-500 text-white font-bold w-full mt-4 p-4 rounded-md shadow-sm"
+        onClick={
+          isExpired ? null : canExecute ? handleExecute : handleUserVoting
+        }
+        className={`bg-blue-500 text-white font-bold w-full mt-4 p-4 rounded-md shadow-sm ${
+          isExpired ? "bg-gray-500" : canExecute ? "bg-green-700" : ""
+        }`}
       >
-        {loading ? "Voting..." : "Vote"}
+        {isExpired
+          ? "Expired"
+          : canExecute
+          ? executing // Show "Executing..." if executing
+            ? "Executing..."
+            : "Execute"
+          : loading && canExecute
+          ? "Executing..."
+          : loading
+          ? "Voting..."
+          : "Vote"}
       </Button>
     </Box>
   );

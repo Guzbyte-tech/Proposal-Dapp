@@ -14,14 +14,13 @@ const useRunners = () => {
 
   useEffect(() => {
     if (!provider) return setSigner(null);
-    provider.getSigner()
-    .then((newSigner) => {
+    provider.getSigner().then((newSigner) => {
       if (!signer) return setSigner(newSigner);
       if (newSigner.address === signer.address) return;
       setSigner(newSigner);
     });
   }, [provider, signer]);
-  
+
   return { provider, signer, readOnlyProvider: jsonRpcProvider };
 };
 

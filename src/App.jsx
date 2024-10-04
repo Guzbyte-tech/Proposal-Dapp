@@ -8,6 +8,7 @@ import { Contract } from "ethers";
 import useRunners from "./hooks/useRunners";
 import { Interface } from "ethers";
 import ABI from "./ABI/proposal.json";
+import { useRef } from "react"; // Import useRef
 
 const multicallAbi = [
   "function tryAggregate(bool requireSuccess, (address target, bytes callData)[] calls) returns ((bool success, bytes returnData)[] returnData)",
@@ -17,6 +18,8 @@ function App() {
   const readOnlyProposalContract = useContract(true);
   const { readOnlyProvider } = useRunners();
   const [proposals, setProposals] = useState([]);
+  const hasVotingListener = useRef(false); // Ref to track listener
+  const hasExecuteListener = useRef(false); // Ref to track listener
 
   const handleProposalCreation = useCallback(
     async (
@@ -28,17 +31,6 @@ function App() {
       minVotesToPass
     ) => {
       try {
-        console.log("New proposal added:");
-        console.log("Proposal ID:", proposalId.toString());
-        console.log("Description:", description);
-        console.log("Recipient:", recipient);
-        console.log("Amount:", amount);
-        console.log(
-          "Voting Deadline:",
-          new Date(Number(votingDeadline) * 1000).toLocaleDateString()
-        );
-        console.log("Min Votes to Pass:", minVotesToPass.toString());
-
         setProposals((prevProposals) => [
           ...prevProposals,
           {
@@ -58,14 +50,66 @@ function App() {
     []
   );
 
+  const handleVotingEvent = useCallback(
+    (proposalId, voter) => {
+      console.log("Voted Proposal Id: ", proposalId);
+      console.log("Voter Address: ", voter);
+      console.log("event call");
+      setProposals((prevProposals) =>
+        prevProposals.map((proposal) => {
+          if (Number(proposal.id) === Number(proposalId)) {
+            console.log(
+              `Updating proposal ${proposalId} votecount from ${proposal.votecount}`
+            );
+            return { ...proposal, votecount: Number(proposal.votecount) + 1 };
+          }
+          return proposal;
+        })
+      );
+    },
+    [setProposals]
+  );
+
+
+  const handleExecuteEvent = useCallback(
+    (proposalId) => {
+      setProposals((prevProposals) =>
+        prevProposals.map((proposal) => {
+          if (Number(proposal.id) === Number(proposalId)) {
+            return { ...proposal, executed: true };
+          }
+          return proposal;
+        })
+      );
+    },
+    [setProposals]
+  );
+
+
+
   useEffect(() => {
-    if (readOnlyProposalContract) {
+    if (readOnlyProposalContract && !hasVotingListener.current) {
       readOnlyProposalContract.on("ProposalCreated", handleProposalCreation);
+      readOnlyProposalContract.on("Voted", handleVotingEvent);
+      hasVotingListener.current = true; // Set the ref to true
+      hasExecuteListener.current = true;
+
+      readOnlyProposalContract.on("ProposalExecuted", handleExecuteEvent);
+
+
       return () => {
         readOnlyProposalContract.off("ProposalCreated", handleProposalCreation);
+        readOnlyProposalContract.off("Voted", handleVotingEvent);
+        hasVotingListener.current = false; // Reset the ref
+        readOnlyProposalContract.off("ProposalExecuted", handleExecuteEvent);
+        hasExecuteListener.current = false;
       };
     }
-  }, [handleProposalCreation, readOnlyProposalContract]);
+  }, [handleExecuteEvent, handleProposalCreation, handleVotingEvent, readOnlyProposalContract]);
+
+
+
+  
 
   const fetchProposals = useCallback(async () => {
     if (!readOnlyProposalContract) return;
@@ -121,23 +165,27 @@ function App() {
     fetchProposals();
   }, [fetchProposals]);
 
-  const updateVoteCount = (proposalId, newVoteCount) => {
-    setProposals((prevProposals) =>
-      prevProposals.map((proposal) =>
-        proposal.id === proposalId
-          ? { ...proposal, votecount: newVoteCount }
-          : proposal
-      )
-    );
-  };
+  // const updateVoteCount = (proposalId, newVoteCount) => {
+  //   //Listen to Vote Event.
 
+  //   setProposals((prevProposals) =>
+  //     prevProposals.map((proposal) =>
+  //       proposal.id === proposalId
+  //         ? { ...proposal, votecount: newVoteCount }
+  //         : proposal
+  //     )
+  //   );
+  // };
 
   return (
     <Layout>
       <Box className="flex justify-end p-4">
         <CreateProposalModal />
       </Box>
-      <Proposals proposals={proposals} updateVoteCount={updateVoteCount} />
+      <Proposals
+        proposals={proposals}
+        // updateVoteCount={updateVoteCount}
+      />
     </Layout>
   );
 }
